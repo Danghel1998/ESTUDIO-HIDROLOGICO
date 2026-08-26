@@ -4,7 +4,7 @@
     {
       "name": "hidrologia-app",
       "runtimeExecutable": ".venv/Scripts/streamlit.exe",
-      "runtimeArgs": ["run", "app.py", "--server.port", "8765"],
+      "runtimeArgs": ["run", "HIDROPro.py", "--server.port", "8765"],
       "port": 8765
     }
   ]
