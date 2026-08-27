@@ -63,5 +63,10 @@ st.success(
     "y caudal de diseño) para cada tipo de obra."
 )
 
+_col_sig1, _col_sig2 = st.columns([3, 1])
+with _col_sig2:
+    if st.button("Curvas IDF e Hietograma →", type="primary", use_container_width=True):
+        st.switch_page("pages/4_🌧️_IDF_Hietograma.py")
+
 st.sidebar.divider()
 st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

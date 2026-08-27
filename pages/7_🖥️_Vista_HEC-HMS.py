@@ -204,5 +204,10 @@ if series_hidrograma:
         st.dataframe(tabla_conv.round(4), use_container_width=True, height=380)
         st.metric("Q total máximo de la tabla (m³/s)", f"{tabla_conv['Q total (m3/s)'].max():.3f}")
 
+_col_sig1, _col_sig2 = st.columns([3, 1])
+with _col_sig2:
+    if st.button("Diseño Hidráulico →", type="primary", use_container_width=True):
+        st.switch_page("pages/8_📐_Diseño_Hidraulico.py")
+
 st.sidebar.divider()
 st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

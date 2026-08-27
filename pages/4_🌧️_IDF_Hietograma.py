@@ -304,5 +304,10 @@ if "reporte_hietogramas_excel" in st.session_state:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
+_col_sig1, _col_sig2 = st.columns([3, 1])
+with _col_sig2:
+    if st.button("Cuencas →", type="primary", use_container_width=True):
+        st.switch_page("pages/5_🗺️_Cuencas.py")
+
 st.sidebar.divider()
 st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

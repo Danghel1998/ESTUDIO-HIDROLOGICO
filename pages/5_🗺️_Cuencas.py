@@ -174,6 +174,11 @@ if len(df) > 0:
         "Cuencas registradas. Continúa con **📈 Caudal de Diseño** para obtener el caudal "
         "máximo por el Método SCS y el Método Racional."
     )
+
+    _col_sig1, _col_sig2 = st.columns([3, 1])
+    with _col_sig2:
+        if st.button("Caudal de diseño →", type="primary", use_container_width=True):
+            st.switch_page("pages/6_📈_Caudal_Diseno.py")
 else:
     st.info("Completa al menos una fila con área, perímetro, longitud y cotas del cauce.")
 

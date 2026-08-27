@@ -657,5 +657,10 @@ if "resumen_caudales" in st.session_state:
 
     st.success("Caudal máximo de diseño calculado para todas las cuencas/subcuencas.")
 
+    _col_sig1, _col_sig2 = st.columns([3, 1])
+    with _col_sig2:
+        if st.button("Vista HEC-HMS →", type="primary", use_container_width=True):
+            st.switch_page("pages/7_🖥️_Vista_HEC-HMS.py")
+
 st.sidebar.divider()
 st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")
