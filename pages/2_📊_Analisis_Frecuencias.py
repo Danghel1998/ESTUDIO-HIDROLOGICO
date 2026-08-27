@@ -335,3 +335,6 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 st.success("Listo. Continúa con **⏱️ Período de retorno** o **🌧️ Curvas IDF e Hietograma**.")
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

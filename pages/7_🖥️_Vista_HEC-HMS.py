@@ -203,3 +203,6 @@ if series_hidrograma:
         tabla_conv = scs.tabla_convolucion(serie["pe_mm"], serie["hu"], serie["dt_h"], max_pulsos=24)
         st.dataframe(tabla_conv.round(4), use_container_width=True, height=380)
         st.metric("Q total máximo de la tabla (m³/s)", f"{tabla_conv['Q total (m3/s)'].max():.3f}")
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

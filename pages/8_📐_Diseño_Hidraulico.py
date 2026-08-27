@@ -228,3 +228,6 @@ try:
 
 except ValueError as e:
     st.error(f"No se pudo resolver el tirante normal: {e}")
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

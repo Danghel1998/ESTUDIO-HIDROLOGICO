@@ -176,3 +176,6 @@ if len(df) > 0:
     )
 else:
     st.info("Completa al menos una fila con área, perímetro, longitud y cotas del cauce.")
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

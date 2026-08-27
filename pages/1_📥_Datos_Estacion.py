@@ -262,3 +262,6 @@ if df_result is not None and len(df_result) > 0:
     st.success("Datos listos. Continúa con **📊 Análisis de frecuencias** en el menú lateral.")
 else:
     st.info("Aún no hay datos cargados.")
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

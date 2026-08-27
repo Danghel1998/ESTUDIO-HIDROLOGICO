@@ -303,3 +303,6 @@ if "reporte_hietogramas_excel" in st.session_state:
         file_name="hietogramas_diseno.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

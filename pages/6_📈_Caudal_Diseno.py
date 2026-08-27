@@ -656,3 +656,6 @@ if "resumen_caudales" in st.session_state:
         )
 
     st.success("Caudal máximo de diseño calculado para todas las cuencas/subcuencas.")
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

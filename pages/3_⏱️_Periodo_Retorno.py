@@ -62,3 +62,6 @@ st.success(
     "Estos periodos de retorno se usarán en los pasos siguientes (curvas IDF, hietograma "
     "y caudal de diseño) para cada tipo de obra."
 )
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

@@ -41,3 +41,6 @@ Esta interfaz no automatiza ese login (requiere contraseña personal); en el pas
 tipear la serie manualmente.
 """
     )
+
+st.sidebar.divider()
+st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")
