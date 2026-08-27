@@ -361,6 +361,54 @@ if df_result is not None and len(df_result) > 0:
             "mínimo de 25 años; con menos datos el análisis de frecuencias es menos confiable."
         )
 
+    def _generar_excel_serie(df_anual, datos_mensuales, nombre_est, codigo_est):
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            workbook = writer.book
+            fmt_titulo = workbook.add_format({"bold": True, "font_size": 13})
+            fmt_subtitulo = workbook.add_format({"italic": True, "font_color": "#555555"})
+            fmt_header = workbook.add_format({
+                "bold": True, "bg_color": "#1f4e78", "font_color": "white",
+                "border": 1, "align": "center",
+            })
+            fmt_num = workbook.add_format({"num_format": "0.00", "border": 1})
+            fmt_anio = workbook.add_format({"border": 1, "align": "center"})
+
+            hoja = "Serie anual"
+            df_anual.to_excel(writer, sheet_name=hoja, startrow=3, index=False, header=False)
+            ws = writer.sheets[hoja]
+            ws.write(0, 0, f"Estación: {nombre_est or '(sin nombre)'}", fmt_titulo)
+            ws.write(1, 0, f"Código SENAMHI: {codigo_est or '-'}", fmt_subtitulo)
+            ws.write(3, 0, "Año", fmt_header)
+            ws.write(3, 1, "Pmax24h (mm)", fmt_header)
+            for i in range(len(df_anual)):
+                ws.write(4 + i, 0, int(df_anual.iloc[i]["Año"]), fmt_anio)
+                ws.write(4 + i, 1, float(df_anual.iloc[i]["P24h"]), fmt_num)
+            ws.set_column(0, 0, 12)
+            ws.set_column(1, 1, 16)
+
+            if datos_mensuales is not None and len(datos_mensuales) > 0:
+                hoja_m = "Datos mensuales"
+                meses_cols = list(datos_mensuales.columns)
+                datos_mensuales.reset_index().to_excel(writer, sheet_name=hoja_m, startrow=0, index=False)
+                ws_m = writer.sheets[hoja_m]
+                for col_idx in range(len(meses_cols) + 1):
+                    ws_m.write(0, col_idx, datos_mensuales.reset_index().columns[col_idx], fmt_header)
+                ws_m.set_column(0, 0, 12)
+                ws_m.set_column(1, len(meses_cols), 12)
+
+        return buffer.getvalue()
+
+    excel_bytes = _generar_excel_serie(
+        df_result, st.session_state.get("datos_mensuales"), nombre_estacion, codigo_estacion
+    )
+    st.download_button(
+        "📊 Descargar serie por años (Excel)",
+        excel_bytes,
+        file_name=f"serie_pmax24h_{(nombre_estacion or 'estacion').strip().replace(' ', '_')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
     st.success("Datos listos. Continúa con **📊 Análisis de frecuencias** en el menú lateral.")
 else:
     st.info("Aún no hay datos cargados.")
