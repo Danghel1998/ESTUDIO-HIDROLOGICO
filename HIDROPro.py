@@ -31,6 +31,9 @@ en memoria mientras la sesión esté abierta.
 """
 )
 
+if st.button("🚀 Empezar el estudio", type="primary", use_container_width=True):
+    st.switch_page("pages/1_📥_Datos_Estacion.py")
+
 with st.expander("⚠️ Sobre los datos de SENAMHI"):
     st.markdown(
         """
