@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from hydro import pdf_import
+from hydro import pdf_import, senamhi_estaciones
 
 st.set_page_config(page_title="Datos de Estación", page_icon="📥", layout="wide")
 st.title("📥 Datos de la estación SENAMHI")
@@ -16,6 +16,102 @@ seleccionada por el método del polígono de Thiessen (la más cercana/represent
 de tu cuenca). El Manual MTC exige un mínimo recomendable de 25 años de registro.
 """
 )
+
+with st.expander(
+    "🗺️ Mapa de estaciones SENAMHI (para ubicar la estación más cercana a tu cuenca)",
+    expanded=False, key="map_expander",
+):
+    st.caption(
+        "Ubicación de las 974 estaciones hidrometeorológicas publicadas en el "
+        "[mapa oficial de SENAMHI](https://www.senamhi.gob.pe/mapas/mapa-estaciones-2/) "
+        "(copia local — SENAMHI no ofrece una API pública para esta información). "
+        "Úsalo para identificar, por cercanía a tu cuenca, la estación a usar en el "
+        "método del polígono de Thiessen; luego descarga su serie histórica desde el "
+        "portal de SENAMHI y súbela abajo."
+    )
+
+    df_est = senamhi_estaciones.cargar_estaciones()
+
+    fc1, fc2, fc3 = st.columns([1.3, 1.7, 1.5])
+    with fc1:
+        tipos_sel = st.multiselect(
+            "Tipo de estación", ["Meteorológica", "Hidrológica"],
+            default=["Meteorológica", "Hidrológica"], key="map_tipo",
+        )
+    with fc2:
+        estados_sel = st.multiselect(
+            "Condición de recepción de datos",
+            list(senamhi_estaciones.ESTADOS.values()),
+            default=list(senamhi_estaciones.ESTADOS.values()), key="map_estado",
+        )
+    with fc3:
+        busqueda = st.text_input(
+            "Buscar por nombre o código", "", key="map_busqueda",
+            placeholder="p.ej. BAGUA, 000253",
+        )
+
+    df_map = df_est[df_est["tipo"].isin(tipos_sel) & df_est["estado_desc"].isin(estados_sel)]
+    if busqueda.strip():
+        b = busqueda.strip().upper()
+        df_map = df_map[
+            df_map["nombre"].str.upper().str.contains(b)
+            | df_map["codigo"].str.contains(b)
+            | df_map["codigo_antiguo"].str.upper().str.contains(b)
+        ]
+
+    if len(df_map) == 0:
+        st.info("Ninguna estación coincide con el filtro/búsqueda.")
+    else:
+        fig_map = px.scatter_map(
+            df_map, lat="lat", lon="lon", color="tipo",
+            color_discrete_map={"Meteorológica": "#2e7d32", "Hidrológica": "#1565c0"},
+            hover_name="nombre",
+            hover_data={"codigo": True, "categoria_desc": True, "estado_desc": True, "lat": False, "lon": False},
+            custom_data=["nombre", "codigo"],
+            zoom=4.4 if len(df_map) > 1 else 11,
+            center={"lat": -9.19, "lon": -75.02} if len(df_map) > 1 else
+                   {"lat": float(df_map["lat"].iloc[0]), "lon": float(df_map["lon"].iloc[0])},
+            map_style="open-street-map",
+            height=520,
+        )
+        fig_map.update_traces(marker={"size": 9})
+        fig_map.update_layout(
+            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.01},
+        )
+        evento = st.plotly_chart(
+            fig_map, use_container_width=True, on_select="rerun",
+            selection_mode="points", key="mapa_senamhi",
+        )
+        st.caption(f"{len(df_map)} estación(es) mostradas. Haz clic en un punto del mapa para seleccionarlo.")
+
+        puntos = evento.get("selection", {}).get("points", []) if evento else []
+        if puntos:
+            nom_sel, cod_sel = puntos[0]["customdata"][0], puntos[0]["customdata"][1]
+            fila_sel = df_map[(df_map["nombre"] == nom_sel) & (df_map["codigo"] == cod_sel)].iloc[0]
+            st.success(
+                f"Seleccionada: **{fila_sel['nombre']}** — código `{fila_sel['codigo']}` "
+                f"({fila_sel['categoria_desc']}, {fila_sel['estado_desc']})"
+            )
+            if st.button("📌 Usar esta estación (autocompletar nombre y código)"):
+                st.session_state["station_name"] = fila_sel["nombre"].title()
+                cod_completo = fila_sel["codigo"]
+                if fila_sel["codigo_antiguo"]:
+                    cod_completo += f" / {fila_sel['codigo_antiguo']}"
+                st.session_state["station_code"] = cod_completo
+                st.rerun()
+
+        with st.expander("Ver tabla de estaciones filtradas"):
+            st.dataframe(
+                df_map[["nombre", "codigo", "codigo_antiguo", "tipo", "categoria_desc", "estado_desc", "lat", "lon"]]
+                .rename(columns={
+                    "nombre": "Nombre", "codigo": "Código", "codigo_antiguo": "Código antiguo",
+                    "tipo": "Tipo", "categoria_desc": "Categoría", "estado_desc": "Condición",
+                    "lat": "Latitud", "lon": "Longitud",
+                })
+                .sort_values("Nombre"),
+                use_container_width=True, hide_index=True, height=280,
+            )
 
 col_meta1, col_meta2 = st.columns(2)
 with col_meta1:
