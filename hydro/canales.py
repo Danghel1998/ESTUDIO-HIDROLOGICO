@@ -141,6 +141,141 @@ def energia_especifica(q: float, y: float, seccion: str, **kw) -> float:
     return y + v ** 2 / (2 * G)
 
 
+def pendiente_friccion(q: float, y: float, n: float, seccion: str, **kw) -> float:
+    """Se = (Q·n / (A·R^(2/3)))²  — pendiente de fricción (ecuación de
+    Manning despejada), usada en el cálculo de curvas de remanso."""
+    prop = propiedades_seccion(y, seccion, **kw)
+    a, p = prop["area"], prop["perimetro"]
+    if a <= 0 or p <= 0:
+        return 0.0
+    r = a / p
+    v = q / a
+    return (v * n / r ** (2.0 / 3.0)) ** 2
+
+
+# ---------------------------------------------------------------------------
+# Remanso (flujo gradualmente variado) — métodos que no requieren tablas o
+# funciones de flujo variado tabuladas (Bakhmeteff/Bresse quedan pendientes).
+# ---------------------------------------------------------------------------
+
+def perfil_remanso_directo_por_tramos(q: float, n: float, s: float, seccion: str, y1: float, y2: float, nt: int, **kw) -> list:
+    """Método directo por tramos (standard step): divide [y1, y2] en `nt`
+    incrementos iguales de tirante y calcula Δx en cada uno por balance de
+    energía específica, dE/dx = So - Se → Δx = ΔE / (So - Se_promedio)."""
+    dy = (y2 - y1) / nt
+    filas = []
+
+    def _fila(y, x):
+        prop = propiedades_seccion(y, seccion, **kw)
+        v = velocidad(q, y, seccion, **kw)
+        e = energia_especifica(q, y, seccion, **kw)
+        se = pendiente_friccion(q, y, n, seccion, **kw)
+        return prop, v, e, se
+
+    prop, v, e, se = _fila(y1, 0.0)
+    x = 0.0
+    filas.append({
+        "y": y1, "A": prop["area"], "P": prop["perimetro"], "R": prop["radio_hidraulico"],
+        "R23": prop["radio_hidraulico"] ** (2 / 3), "v": v, "v2_2g": v ** 2 / (2 * G), "E": e,
+        "deltaE": 0.0, "Se": se, "SeP": se, "So_SeP": s - se, "deltax": 0.0, "x": x,
+    })
+    for _ in range(nt):
+        y_sig = filas[-1]["y"] + dy
+        prop_sig, v_sig, e_sig, se_sig = _fila(y_sig, None)
+        delta_e = e_sig - filas[-1]["E"]
+        se_prom = (filas[-1]["Se"] + se_sig) / 2
+        so_sep = s - se_prom
+        delta_x = delta_e / so_sep if abs(so_sep) > 1e-12 else float("nan")
+        x += delta_x
+        filas.append({
+            "y": y_sig, "A": prop_sig["area"], "P": prop_sig["perimetro"], "R": prop_sig["radio_hidraulico"],
+            "R23": prop_sig["radio_hidraulico"] ** (2 / 3), "v": v_sig, "v2_2g": v_sig ** 2 / (2 * G), "E": e_sig,
+            "deltaE": delta_e, "Se": se_sig, "SeP": se_prom, "So_SeP": so_sep, "deltax": delta_x, "x": x,
+        })
+    return filas
+
+
+def perfil_remanso_integracion_grafica(q: float, n: float, s: float, seccion: str, y1: float, y2: float, nt: int, **kw) -> list:
+    """Método de integración gráfica: evalúa f(y) = (1 - Q²T/(gA³)) / (So-Se)
+    en `nt+1` tirantes entre y1 y y2, e integra con la regla del trapecio
+    (dx/dy = f(y), misma ecuación diferencial del flujo gradualmente variado)."""
+    dy = (y2 - y1) / nt
+    filas = []
+    x = 0.0
+    f_prev = None
+    for i in range(nt + 1):
+        y = y1 + i * dy
+        prop = propiedades_seccion(y, seccion, **kw)
+        a, p_, t = prop["area"], prop["perimetro"], prop["espejo"]
+        v = velocidad(q, y, seccion, **kw)
+        se = pendiente_friccion(q, y, n, seccion, **kw)
+        uno_menos_fr2 = 1 - (q ** 2 * t) / (G * a ** 3)
+        so_se = s - se
+        f_y = uno_menos_fr2 / so_se if abs(so_se) > 1e-12 else float("nan")
+        delta_x = 0.0
+        if f_prev is not None:
+            delta_x = (f_prev + f_y) / 2 * dy
+            x += delta_x
+        filas.append({
+            "y": y, "A": a, "P": p_, "R": prop["radio_hidraulico"], "T": t, "v": v, "Se": se,
+            "uno_menos_Q2T_gA3": uno_menos_fr2, "So_Se": so_se, "f_y": f_y, "deltax": delta_x, "x": x,
+        })
+        f_prev = f_y
+    return filas
+
+
+def _raiz_cercana(f, y0: float, lo_bound: float, hi_bound: float, y_max_iter: int = 60):
+    """Busca una raíz de f cerca de y0, expandiendo una ventana centrada en
+    y0 (en vez de bisección directa en todo el rango): cerca del tirante
+    crítico el residuo del método de tramos fijos puede no ser monótono y
+    tener más de una raíz matemática, y la físicamente válida es la más
+    cercana al tirante actual."""
+    delta = max(abs(y0) * 0.05, 1e-4)
+    for _ in range(y_max_iter):
+        lo = max(lo_bound, y0 - delta)
+        hi = min(hi_bound, y0 + delta)
+        if hi > lo:
+            flo, fhi = f(lo), f(hi)
+            if flo * fhi < 0:
+                return brentq(f, lo, hi)
+        if lo <= lo_bound and hi >= hi_bound:
+            break
+        delta *= 1.6
+    raise ValueError("No se encontró un tirante siguiente válido (paso Δx demasiado grande para este tramo).")
+
+
+def perfil_remanso_tramos_fijos(q: float, n: float, s: float, seccion: str, yi: float, nt: int, dx: float, y_max: float = 50.0, **kw) -> list:
+    """Método de tramos fijos: a partir de `yi`, marcha `nt` pasos de
+    longitud fija `dx`, resolviendo en cada uno el tirante siguiente por
+    balance de energía específica (implícito: Se_promedio depende del
+    tirante buscado, se resuelve numéricamente)."""
+    yc = tirante_critico(q, seccion, y_max=y_max, **kw)
+    filas = [{"x": 0.0, "y": yi}]
+    y = yi
+    x = 0.0
+    for _ in range(nt):
+        e_i = energia_especifica(q, y, seccion, **kw)
+        se_i = pendiente_friccion(q, y, n, seccion, **kw)
+
+        def _residuo(y_sig):
+            e_sig = energia_especifica(q, y_sig, seccion, **kw)
+            se_sig = pendiente_friccion(q, y_sig, n, seccion, **kw)
+            se_prom = (se_i + se_sig) / 2
+            return (e_sig - e_i) - (s - se_prom) * dx
+
+        # El siguiente tirante se busca del mismo lado del crítico que el
+        # actual (sub o supercrítico), para no saltar de rama por error.
+        lo_bound, hi_bound = (yc + 1e-9, y_max) if y >= yc else (1e-9, yc - 1e-9)
+        try:
+            y_sig = _raiz_cercana(_residuo, y, lo_bound, hi_bound)
+        except ValueError:
+            break
+        x += dx
+        filas.append({"x": x, "y": y_sig})
+        y = y_sig
+    return filas
+
+
 # ---------------------------------------------------------------------------
 # Resalto hidráulico — función de momentum (M = Q²/(g·A) + primer momento del
 # área respecto a la superficie libre), válida para cualquier sección al

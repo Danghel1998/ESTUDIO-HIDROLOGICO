@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -52,12 +53,12 @@ modulo = st.radio(
 st.divider()
 
 
-def _input_geometria(prefix: str, seccion_default: str = "Trapezoidal"):
+def _input_geometria(prefix: str, seccion_default: str = "Trapezoidal", incluir_circular: bool = True):
     """Selector de forma + dimensiones de la sección (sin n ni S) — reusado
     por los módulos que no dependen de la pendiente/rugosidad del cauce."""
+    opciones = list(ca.SECCIONES.keys()) if incluir_circular else [s for s in ca.SECCIONES if s != "Circular"]
     seccion = st.selectbox(
-        "Forma de la sección", list(ca.SECCIONES.keys()),
-        index=list(ca.SECCIONES.keys()).index(seccion_default), key=f"{prefix}_seccion",
+        "Forma de la sección", opciones, index=opciones.index(seccion_default), key=f"{prefix}_seccion",
     )
     kw = {}
     if seccion == "Circular":
@@ -121,6 +122,38 @@ def _fig_seccion_con_agua(seccion: str, kw: dict, tirantes: list, altura_ref: fl
     return fig
 
 
+def _fig_esquema_ilustrativo(seccion: str, kw: dict):
+    """Esquema ilustrativo de la forma de sección (proporciones fijas, no a
+    escala real) con las etiquetas T/y/Z/b — mismo estilo que H Canales."""
+    fig_esquema = go.Figure()
+    if seccion == "Circular":
+        th = np.linspace(0, 2 * np.pi, 100)
+        fig_esquema.add_trace(go.Scatter(x=0.5 * np.cos(th), y=0.5 * np.sin(th) + 0.5, mode="lines",
+                                          line=dict(color="#1a1a1a", width=3), fill="toself",
+                                          fillcolor="#bcd6f2", showlegend=False))
+        fig_esquema.add_annotation(x=0.6, y=0.5, text="D", showarrow=True, ax=40, ay=0, font=dict(size=16))
+    else:
+        z_ill = kw.get("z", 1.0) if seccion in ("Trapezoidal", "Triangular") else 0.0
+        b_ill, y_ill = 0.6, 0.6
+        half_top = b_ill / 2 + z_ill * y_ill
+        half_bot = b_ill / 2 if seccion != "Triangular" else 0.0
+        xs = [-half_top, -half_bot, half_bot, half_top]
+        ys = [y_ill, 0, 0, y_ill]
+        fig_esquema.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color="#1a1a1a", width=3),
+                                          fill="toself", fillcolor="#bcd6f2", showlegend=False))
+        fig_esquema.add_annotation(x=0, y=y_ill * 1.18, text="T", showarrow=False, font=dict(size=16, color="#0b3d91"))
+        fig_esquema.add_annotation(x=half_top + 0.18, y=y_ill / 2, text="y", showarrow=False, font=dict(size=16, color="#0b3d91"))
+        if seccion != "Rectangular":
+            fig_esquema.add_annotation(x=-half_bot / 2 - half_top / 4, y=y_ill / 2, text="Z", showarrow=False, font=dict(size=14, color="#0b3d91"))
+            fig_esquema.add_annotation(x=-(half_bot + half_top) / 4, y=y_ill / 2 + 0.14, text="1", showarrow=False, font=dict(size=12, color="#0b3d91"))
+        if half_bot > 0:
+            fig_esquema.add_annotation(x=0, y=-0.08, text="b", showarrow=False, font=dict(size=16, color="#0b3d91"))
+    fig_esquema.update_xaxes(visible=False)
+    fig_esquema.update_yaxes(visible=False, scaleanchor="x")
+    fig_esquema.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), plot_bgcolor="#eaf2fb", paper_bgcolor="#eaf2fb")
+    return fig_esquema
+
+
 def _modulo_tirante_normal(q_diseno, obra_sel, nombre_sel, resumen, origen_manual):
     st.subheader("2. Datos")
 
@@ -182,33 +215,7 @@ def _modulo_tirante_normal(q_diseno, obra_sel, nombre_sel, resumen, origen_manua
 
     with col_dibujo:
         with st.container(border=True):
-            fig_esquema = go.Figure()
-            if seccion == "Circular":
-                th = np.linspace(0, 2 * np.pi, 100)
-                fig_esquema.add_trace(go.Scatter(x=0.5 * np.cos(th), y=0.5 * np.sin(th) + 0.5, mode="lines",
-                                                  line=dict(color="#1a1a1a", width=3), fill="toself",
-                                                  fillcolor="#bcd6f2", showlegend=False))
-                fig_esquema.add_annotation(x=0.6, y=0.5, text="D", showarrow=True, ax=40, ay=0, font=dict(size=16))
-            else:
-                z_ill = kw.get("z", 1.0) if seccion in ("Trapezoidal", "Triangular") else 0.0
-                b_ill, y_ill = 0.6, 0.6
-                half_top = b_ill / 2 + z_ill * y_ill
-                half_bot = b_ill / 2 if seccion != "Triangular" else 0.0
-                xs = [-half_top, -half_bot, half_bot, half_top]
-                ys = [y_ill, 0, 0, y_ill]
-                fig_esquema.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color="#1a1a1a", width=3),
-                                                  fill="toself", fillcolor="#bcd6f2", showlegend=False))
-                fig_esquema.add_annotation(x=0, y=y_ill * 1.18, text=f"T", showarrow=False, font=dict(size=16, color="#0b3d91"))
-                fig_esquema.add_annotation(x=half_top + 0.18, y=y_ill / 2, text="y", showarrow=False, font=dict(size=16, color="#0b3d91"))
-                if seccion != "Rectangular":
-                    fig_esquema.add_annotation(x=-half_bot / 2 - half_top / 4, y=y_ill / 2, text="Z", showarrow=False, font=dict(size=14, color="#0b3d91"))
-                    fig_esquema.add_annotation(x=-(half_bot + half_top) / 4, y=y_ill / 2 + 0.14, text="1", showarrow=False, font=dict(size=12, color="#0b3d91"))
-                if half_bot > 0:
-                    fig_esquema.add_annotation(x=0, y=-0.08, text="b", showarrow=False, font=dict(size=16, color="#0b3d91"))
-            fig_esquema.update_xaxes(visible=False)
-            fig_esquema.update_yaxes(visible=False, scaleanchor="x")
-            fig_esquema.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), plot_bgcolor="#eaf2fb", paper_bgcolor="#eaf2fb")
-            st.plotly_chart(fig_esquema, use_container_width=True)
+            st.plotly_chart(_fig_esquema_ilustrativo(seccion, kw), use_container_width=True)
             st.caption(f"Esquema ilustrativo — sección {seccion.lower()}")
 
     st.divider()
@@ -289,6 +296,10 @@ def _modulo_tirante_critico(q_diseno):
                 "El tirante crítico depende solo de Q y la geometría (no de la rugosidad n "
                 "ni de la pendiente S): es el tirante para el cual la energía específica es mínima."
             )
+    with col_dibujo:
+        with st.container(border=True):
+            st.plotly_chart(_fig_esquema_ilustrativo(seccion, kw), use_container_width=True)
+            st.caption(f"Esquema ilustrativo — sección {seccion.lower()}")
 
     st.divider()
     st.subheader("3. Resultados")
@@ -312,11 +323,9 @@ def _modulo_tirante_critico(q_diseno):
                 st.metric("Velocidad crítica (vc)", f"{vc:.4f} m/s")
                 st.metric("Energía específica mínima (Ec)", f"{ec:.4f} m")
 
-        with col_dibujo:
-            with st.container(border=True):
-                fig = _fig_seccion_con_agua(seccion, kw, [("yc", yc, "#ef4444", 0.35)])
-                fig.update_layout(title=f"Sección {seccion.lower()} — tirante crítico")
-                st.plotly_chart(fig, use_container_width=True)
+        fig = _fig_seccion_con_agua(seccion, kw, [("yc", yc, "#ef4444", 0.35)])
+        fig.update_layout(title=f"Sección {seccion.lower()} — tirante crítico")
+        st.plotly_chart(fig, use_container_width=True)
 
     except ValueError as e:
         st.error(f"No se pudo resolver el tirante crítico: {e}")
@@ -335,6 +344,10 @@ def _modulo_resalto(q_diseno):
                 help="Tirante de llegada al pie de una estructura (rápida, vertedero, salida de "
                 "alcantarilla con pendiente fuerte, etc.), donde el flujo es supercrítico.",
             )
+    with col_dibujo:
+        with st.container(border=True):
+            st.plotly_chart(_fig_esquema_ilustrativo(seccion, kw), use_container_width=True)
+            st.caption(f"Esquema ilustrativo — sección {seccion.lower()}")
 
     st.divider()
     st.subheader("3. Resultados")
@@ -369,17 +382,126 @@ def _modulo_resalto(q_diseno):
             st.metric("Pérdida de energía en el resalto (ΔE = E1 − E2)", f"{delta_e:.4f} m")
             st.caption(f"Tirante crítico de referencia (yc) = {yc:.4f} m")
 
-        with col_dibujo:
-            with st.container(border=True):
-                fig = _fig_seccion_con_agua(
-                    seccion, kw,
-                    [("y2", y2, "#3b82f6", 0.30), ("y1", y1, "#ef4444", 0.55)],
-                )
-                fig.update_layout(title=f"Sección {seccion.lower()} — y1 (antes) y y2 (después) del resalto")
-                st.plotly_chart(fig, use_container_width=True)
+        fig = _fig_seccion_con_agua(
+            seccion, kw,
+            [("y2", y2, "#3b82f6", 0.30), ("y1", y1, "#ef4444", 0.55)],
+        )
+        fig.update_layout(title=f"Sección {seccion.lower()} — y1 (antes) y y2 (después) del resalto")
+        st.plotly_chart(fig, use_container_width=True)
 
     except ValueError as e:
         st.error(f"No se pudo resolver el resalto hidráulico: {e}")
+
+
+def _modulo_remanso(q_diseno):
+    SUBMETODOS = ["Integración Gráfica", "Bakhmeteff", "Bresse", "Directo por Tramos", "Tramos Fijos"]
+    submetodo = st.selectbox("Método de cálculo de la curva de remanso", SUBMETODOS, key="remanso_metodo")
+
+    if submetodo in ("Bakhmeteff", "Bresse"):
+        st.info(
+            f"🚧 El método **{submetodo}** (funciones de flujo variado tabuladas F(u,N)) todavía no "
+            "está implementado — usa **Integración Gráfica** o **Directo por Tramos**: resuelven la "
+            "misma ecuación diferencial del flujo gradualmente variado sin necesitar tablas, y dan "
+            "resultados equivalentes."
+        )
+        return
+
+    es_tramos_fijos = submetodo == "Tramos Fijos"
+
+    st.subheader("2. Datos")
+    col_datos, col_dibujo = st.columns([1, 1])
+    with col_datos:
+        with st.container(border=True):
+            seccion, kw = _input_geometria("rm", "Trapezoidal", incluir_circular=False)
+            st.metric("Caudal (Q)", f"{q_diseno:.3f} m³/s")
+
+            nombres_n = list(ca.MANNING_N.keys())
+            material = st.selectbox("Material / revestimiento", nombres_n, key="rm_material")
+            manual_n = st.checkbox("Ingresar rugosidad (n) manualmente", key="rm_manual_n")
+            n_manning = (
+                st.number_input("Rugosidad (n)", min_value=0.008, max_value=0.15, value=ca.MANNING_N[material], step=0.001, format="%.3f", key="rm_n")
+                if manual_n else ca.MANNING_N[material]
+            )
+            if not manual_n:
+                st.caption(f"n = {n_manning:.3f} ({material})")
+
+            s_fondo = st.number_input("Pendiente (S)", min_value=0.00001, value=0.00100, step=0.00010, format="%.5f", key="rm_s")
+            st.caption("m/m")
+
+            if es_tramos_fijos:
+                yi = st.number_input("Tirante inicial (yi)", min_value=0.001, value=1.00, step=0.05, format="%.3f", key="rm_yi")
+                nt = st.number_input("Número de tramos (nt)", min_value=1, value=10, step=1, key="rm_nt_fijo")
+                dx = st.number_input("Distancia de cada tramo (Δx)", min_value=0.1, value=50.0, step=1.0, format="%.2f", key="rm_dx")
+            else:
+                y1 = st.number_input("Tirante inicial (y1)", min_value=0.001, value=1.00, step=0.05, format="%.3f", key="rm_y1")
+                y2 = st.number_input("Tirante final (y2)", min_value=0.001, value=1.50, step=0.05, format="%.3f", key="rm_y2")
+                nt = st.number_input("Número de tramos (nt)", min_value=1, value=10, step=1, key="rm_nt")
+
+    with col_dibujo:
+        with st.container(border=True):
+            st.plotly_chart(_fig_esquema_ilustrativo(seccion, kw), use_container_width=True)
+            st.caption(f"Esquema ilustrativo — sección {seccion.lower()}")
+            try:
+                yn_ref = ca.tirante_normal(q_diseno, n_manning, s_fondo, seccion, **kw)
+                yc_ref = ca.tirante_critico(q_diseno, seccion, **kw)
+                rcol1, rcol2 = st.columns(2)
+                rcol1.metric("Tirante normal (yn)", f"{yn_ref:.4f} m")
+                rcol2.metric("Tirante crítico (yc)", f"{yc_ref:.4f} m")
+            except ValueError:
+                pass
+
+    st.divider()
+    st.subheader("3. Resultados")
+
+    try:
+        if es_tramos_fijos:
+            filas = ca.perfil_remanso_tramos_fijos(q_diseno, n_manning, s_fondo, seccion, yi, int(nt), dx, **kw)
+            df = pd.DataFrame(filas).rename(columns={"x": "x (m)", "y": "y (m)"})
+            if len(filas) - 1 < nt:
+                st.warning(
+                    f"⚠️ El perfil se detuvo en x = {filas[-1]['x (m)' if 'x (m)' in df.columns else 'x']:.2f} m "
+                    f"(tramo {len(filas) - 1} de {int(nt)}): el tirante se acerca asintóticamente al normal o "
+                    "crítico y un paso Δx fijo ya no puede resolverse ahí. Usa **Directo por Tramos** o "
+                    "**Integración Gráfica** para continuar el perfil (marchan por incrementos de tirante, no de distancia)."
+                )
+            st.dataframe(df.round(4), use_container_width=True, hide_index=True)
+            col_x, col_y = "x (m)", "y (m)"
+
+        elif submetodo == "Directo por Tramos":
+            filas = ca.perfil_remanso_directo_por_tramos(q_diseno, n_manning, s_fondo, seccion, y1, y2, int(nt), **kw)
+            df = pd.DataFrame(filas).rename(columns={
+                "y": "y (m)", "A": "A (m²)", "P": "P (m)", "R": "R (m)", "R23": "R^(2/3)",
+                "v": "v (m/s)", "v2_2g": "v²/2g (m)", "E": "E (m)", "deltaE": "ΔE (m)",
+                "Se": "Se", "SeP": "SeP", "So_SeP": "So−SeP", "deltax": "Δx (m)", "x": "x (m)",
+            })
+            st.dataframe(df.round(4), use_container_width=True, hide_index=True)
+            col_x, col_y = "x (m)", "y (m)"
+
+        else:  # Integración Gráfica
+            filas = ca.perfil_remanso_integracion_grafica(q_diseno, n_manning, s_fondo, seccion, y1, y2, int(nt), **kw)
+            df = pd.DataFrame(filas).rename(columns={
+                "y": "y (m)", "A": "A (m²)", "P": "P (m)", "R": "R (m)", "T": "T (m)", "v": "v (m/s)",
+                "Se": "Se", "uno_menos_Q2T_gA3": "1−Q²T/gA³", "So_Se": "So−Se", "f_y": "f(y)",
+                "deltax": "Δx (m)", "x": "x (m)",
+            })
+            st.dataframe(df.round(4), use_container_width=True, hide_index=True)
+            col_x, col_y = "x (m)", "y (m)"
+
+        fig_perfil = go.Figure()
+        fig_perfil.add_trace(go.Scatter(x=df[col_x], y=df[col_y], mode="lines+markers", name="y(x)"))
+        try:
+            fig_perfil.add_hline(y=yn_ref, line_dash="dot", line_color="#3b82f6", annotation_text=f"yn={yn_ref:.2f}m")
+            fig_perfil.add_hline(y=yc_ref, line_dash="dot", line_color="#ef4444", annotation_text=f"yc={yc_ref:.2f}m")
+        except NameError:
+            pass
+        fig_perfil.update_layout(
+            title=f"Perfil de flujo (curva de remanso) — {submetodo}",
+            xaxis_title="x (m)", yaxis_title="y (m)", height=420,
+        )
+        st.plotly_chart(fig_perfil, use_container_width=True)
+
+    except ValueError as e:
+        st.error(f"No se pudo calcular el perfil de remanso: {e}")
 
 
 if modulo == "Tirante-Normal":
@@ -388,6 +510,8 @@ elif modulo == "Tirante-Crítico":
     _modulo_tirante_critico(q_diseno)
 elif modulo == "Resalto-Hidráulico":
     _modulo_resalto(q_diseno)
+elif modulo == "Remanso":
+    _modulo_remanso(q_diseno)
 else:
     st.info(
         f"🚧 El módulo **{modulo}** (como en H Canales) todavía no está implementado en esta "
