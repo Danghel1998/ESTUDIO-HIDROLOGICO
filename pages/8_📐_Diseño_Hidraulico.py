@@ -504,6 +504,70 @@ def _modulo_remanso(q_diseno):
         st.error(f"No se pudo calcular el perfil de remanso: {e}")
 
 
+def _modulo_caudales():
+    st.caption(
+        "Calcula el caudal (Q) y las propiedades hidráulicas para un **tirante dado** — el cálculo "
+        "inverso de Tirante Normal. No usa el caudal ingresado en el paso 1 (aquí Q es un resultado, no un dato)."
+    )
+    st.subheader("2. Datos")
+    col_datos, col_dibujo = st.columns([1, 1])
+    with col_datos:
+        with st.container(border=True):
+            seccion, kw = _input_geometria("cq", "Trapezoidal", incluir_circular=False)
+            y = st.number_input("Tirante (y)", min_value=0.001, value=0.50, step=0.01, format="%.3f", key="cq_y")
+            st.caption("m")
+
+            nombres_n = list(ca.MANNING_N.keys())
+            material = st.selectbox("Material / revestimiento", nombres_n, key="cq_material")
+            manual_n = st.checkbox("Ingresar rugosidad (n) manualmente", key="cq_manual_n")
+            n_manning = (
+                st.number_input("Rugosidad (n)", min_value=0.008, max_value=0.15, value=ca.MANNING_N[material], step=0.001, format="%.3f", key="cq_n")
+                if manual_n else ca.MANNING_N[material]
+            )
+            if not manual_n:
+                st.caption(f"n = {n_manning:.3f} ({material})")
+
+            s_fondo = st.number_input("Pendiente (S)", min_value=0.00001, value=0.02000, step=0.00100, format="%.5f", key="cq_s")
+            st.caption("m/m")
+
+    with col_dibujo:
+        with st.container(border=True):
+            st.plotly_chart(_fig_esquema_ilustrativo(seccion, kw), use_container_width=True)
+            st.caption(f"Esquema ilustrativo — sección {seccion.lower()}")
+
+    st.divider()
+    st.subheader("3. Resultados")
+
+    try:
+        q = ca.caudal_manning(y, n_manning, s_fondo, seccion, **kw)
+        v = ca.velocidad(q, y, seccion, **kw)
+        fr = ca.numero_froude(q, y, seccion, **kw)
+        prop = ca.propiedades_seccion(y, seccion, **kw)
+        e_esp = ca.energia_especifica(q, y, seccion, **kw)
+        regimen = "Supercrítico" if fr > 1.0 else ("Crítico" if abs(fr - 1.0) < 1e-3 else "Subcrítico")
+
+        with st.container(border=True):
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                st.metric("Caudal (Q)", f"{q:.4f} m³/s")
+                st.metric("Área hidráulica (A)", f"{prop['area']:.4f} m²")
+                st.metric("Radio hidráulico (R)", f"{prop['radio_hidraulico']:.4f} m")
+                st.metric("Número de Froude (F)", f"{fr:.4f}")
+                st.metric("Tipo de flujo", regimen)
+            with rc2:
+                st.metric("Velocidad (v)", f"{v:.4f} m/s")
+                st.metric("Perímetro (P)", f"{prop['perimetro']:.4f} m")
+                st.metric("Espejo de agua (T)", f"{prop['espejo']:.4f} m")
+                st.metric("Energía específica (E)", f"{e_esp:.4f} m")
+
+        fig = _fig_seccion_con_agua(seccion, kw, [("y", y, "#3b82f6", 0.35)])
+        fig.update_layout(title=f"Sección {seccion.lower()}")
+        st.plotly_chart(fig, use_container_width=True)
+
+    except ValueError as e:
+        st.error(f"No se pudo calcular el caudal: {e}")
+
+
 if modulo == "Tirante-Normal":
     _modulo_tirante_normal(q_diseno, obra_sel, nombre_sel, resumen, origen_manual)
 elif modulo == "Tirante-Crítico":
@@ -512,6 +576,8 @@ elif modulo == "Resalto-Hidráulico":
     _modulo_resalto(q_diseno)
 elif modulo == "Remanso":
     _modulo_remanso(q_diseno)
+elif modulo == "Caudales":
+    _modulo_caudales()
 else:
     st.info(
         f"🚧 El módulo **{modulo}** (como en H Canales) todavía no está implementado en esta "
