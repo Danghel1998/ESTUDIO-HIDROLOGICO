@@ -10,9 +10,9 @@ st.title("📐 Diseño hidráulico de canales")
 st.markdown(
     """
 Dimensiona la sección hidráulica (cuneta, canal, badén o alcantarilla) que debe llevar el
-**caudal de diseño** ya calculado, por flujo uniforme (ecuación de Manning) — mismo alcance
-que el software **H Canales** (M. Villón), usando los criterios de borde libre y rugosidad
-del **Manual de Hidrología, Hidráulica y Drenaje del MTC**.
+**caudal de diseño** ya calculado — mismo alcance que el software **H Canales** (M. Villón),
+usando los criterios de borde libre y rugosidad del **Manual de Hidrología, Hidráulica y
+Drenaje del MTC**.
 """
 )
 
@@ -21,6 +21,7 @@ st.subheader("1. Caudal de diseño")
 resumen = st.session_state.get("resumen_caudales")
 origen_manual = st.checkbox("Ingresar el caudal manualmente")
 obra_sel = None
+nombre_sel = None
 if origen_manual or resumen is None:
     if resumen is None:
         st.info("No hay caudales calculados en 📈 Caudal de Diseño todavía — ingresa Q manualmente.")
@@ -38,196 +39,362 @@ else:
     obra_sel = str(fila.get("Obra de drenaje", ""))
 
 st.divider()
-st.subheader("2. Datos")
 
-tipo_obra_opciones = ["Alcantarilla", "Badén", "Canal / cuneta"]
-idx_default = 0
-if obra_sel:
-    for i, op in enumerate(tipo_obra_opciones):
-        if op.lower().split()[0] in obra_sel.lower():
-            idx_default = i
-
-col_datos, col_dibujo = st.columns([1, 1])
-
-with col_datos:
-    with st.container(border=True):
-        tipo_obra = st.radio("Tipo de obra de drenaje", tipo_obra_opciones, index=idx_default, horizontal=True)
-        seccion_default = {"Alcantarilla": "Circular", "Badén": "Trapezoidal", "Canal / cuneta": "Trapezoidal"}[tipo_obra]
-        seccion = st.selectbox(
-            "Forma de la sección", list(ca.SECCIONES.keys()),
-            index=list(ca.SECCIONES.keys()).index(seccion_default),
-        )
-
-        st.metric("Caudal (Q)", f"{q_diseno:.3f} m³/s")
-
-        kw = {}
-        if seccion == "Circular":
-            d = st.number_input("Diámetro (D)", min_value=0.10, value=1.00, step=0.05, format="%.2f")
-            st.caption("m")
-            kw["d"] = d
-        else:
-            b = st.number_input("Ancho de solera (b)", min_value=0.0, value=0.60 if seccion != "Rectangular" else 1.00, step=0.05, format="%.2f")
-            st.caption("m")
-            kw["b"] = b
-
-        if seccion in ("Trapezoidal", "Triangular"):
-            z = st.number_input("Talud (Z)", min_value=0.0, value=1.0, step=0.1, format="%.2f", help="Horizontal por cada 1 vertical")
-            kw["z"] = z
-
-        nombres_n = list(ca.MANNING_N.keys())
-        material = st.selectbox("Material / revestimiento", nombres_n)
-        manual_n = st.checkbox("Ingresar rugosidad (n) manualmente")
-        n_manning = (
-            st.number_input("Rugosidad (n)", min_value=0.008, max_value=0.15, value=ca.MANNING_N[material], step=0.001, format="%.3f")
-            if manual_n else ca.MANNING_N[material]
-        )
-        if not manual_n:
-            st.caption(f"n = {n_manning:.3f} ({material}) — Tabla Nº 09, Manual MTC")
-
-        pendiente_default = 0.02
-        if resumen is not None and not origen_manual:
-            cuencas_df = st.session_state.get("cuencas")
-            if cuencas_df is not None and nombre_sel in list(cuencas_df["Nombre"]):
-                pendiente_default = float(cuencas_df[cuencas_df["Nombre"] == nombre_sel]["Pendiente S (m/m)"].iloc[0])
-        s_fondo = st.number_input(
-            "Pendiente (S)", min_value=0.0001, value=round(pendiente_default, 4),
-            step=0.001, format="%.4f",
-            help="Por defecto se toma la pendiente del cauce de la cuenca seleccionada; ajústala si la obra tiene una pendiente longitudinal propia.",
-        )
-        st.caption("m/m")
-
-with col_dibujo:
-    with st.container(border=True):
-        fig_esquema = go.Figure()
-        if seccion == "Circular":
-            th = np.linspace(0, 2 * np.pi, 100)
-            fig_esquema.add_trace(go.Scatter(x=0.5 * np.cos(th), y=0.5 * np.sin(th) + 0.5, mode="lines",
-                                              line=dict(color="#1a1a1a", width=3), fill="toself",
-                                              fillcolor="#bcd6f2", showlegend=False))
-            fig_esquema.add_annotation(x=0.6, y=0.5, text="D", showarrow=True, ax=40, ay=0, font=dict(size=16))
-        else:
-            z_ill = kw.get("z", 1.0) if seccion in ("Trapezoidal", "Triangular") else 0.0
-            b_ill, y_ill = 0.6, 0.6
-            half_top = b_ill / 2 + z_ill * y_ill
-            half_bot = b_ill / 2 if seccion != "Triangular" else 0.0
-            xs = [-half_top, -half_bot, half_bot, half_top]
-            ys = [y_ill, 0, 0, y_ill]
-            fig_esquema.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color="#1a1a1a", width=3),
-                                              fill="toself", fillcolor="#bcd6f2", showlegend=False))
-            fig_esquema.add_annotation(x=0, y=y_ill * 1.18, text=f"T", showarrow=False, font=dict(size=16, color="#0b3d91"))
-            fig_esquema.add_annotation(x=half_top + 0.18, y=y_ill / 2, text="y", showarrow=False, font=dict(size=16, color="#0b3d91"))
-            if seccion != "Rectangular":
-                fig_esquema.add_annotation(x=-half_bot / 2 - half_top / 4, y=y_ill / 2, text="Z", showarrow=False, font=dict(size=14, color="#0b3d91"))
-                fig_esquema.add_annotation(x=-(half_bot + half_top) / 4, y=y_ill / 2 + 0.14, text="1", showarrow=False, font=dict(size=12, color="#0b3d91"))
-            if half_bot > 0:
-                fig_esquema.add_annotation(x=0, y=-0.08, text="b", showarrow=False, font=dict(size=16, color="#0b3d91"))
-        fig_esquema.update_xaxes(visible=False)
-        fig_esquema.update_yaxes(visible=False, scaleanchor="x")
-        fig_esquema.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), plot_bgcolor="#eaf2fb", paper_bgcolor="#eaf2fb")
-        st.plotly_chart(fig_esquema, use_container_width=True)
-        st.caption(f"Esquema ilustrativo — sección {seccion.lower()}")
+MODULOS = [
+    "Tirante-Normal", "Tirante-Crítico", "Resalto-Hidráulico", "Remanso",
+    "Caudales", "Otros", "Medición", "Estructuras",
+]
+modulo = st.radio(
+    "Módulo de cálculo", MODULOS, horizontal=True, key="modulo_hcanales",
+    label_visibility="collapsed",
+)
 
 st.divider()
-st.subheader("3. Resultados")
 
-try:
-    yn = ca.tirante_normal(q_diseno, n_manning, s_fondo, seccion, **kw)
-    yc = ca.tirante_critico(q_diseno, seccion, **kw)
-    v = ca.velocidad(q_diseno, yn, seccion, **kw)
-    fr = ca.numero_froude(q_diseno, yn, seccion, **kw)
-    prop = ca.propiedades_seccion(yn, seccion, **kw)
-    e_esp = ca.energia_especifica(q_diseno, yn, seccion, **kw)
-    regimen = "Supercrítico" if fr > 1.0 else ("Crítico" if abs(fr - 1.0) < 1e-3 else "Subcrítico")
 
-    with st.container(border=True):
-        rc1, rc2 = st.columns(2)
-        with rc1:
-            st.metric("Tirante normal (y)", f"{yn:.4f} m")
-            st.metric("Área hidráulica (A)", f"{prop['area']:.4f} m²")
-            st.metric("Espejo de agua (T)", f"{prop['espejo']:.4f} m")
-            st.metric("Número de Froude (F)", f"{fr:.4f}")
-            st.metric("Tipo de flujo", regimen)
-        with rc2:
-            st.metric("Perímetro (P)", f"{prop['perimetro']:.4f} m")
-            st.metric("Radio hidráulico (R)", f"{prop['radio_hidraulico']:.4f} m")
-            st.metric("Velocidad (v)", f"{v:.4f} m/s")
-            st.metric("Energía específica (E)", f"{e_esp:.4f} m")
-            st.metric("Tirante crítico (yc)", f"{yc:.4f} m")
-
-    st.divider()
-    st.subheader("4. Borde libre y verificación (criterios Manual MTC)")
-
-    if tipo_obra == "Alcantarilla":
-        altura_ref = kw.get("d", kw.get("b", yn))
-        bl = ca.borde_libre_alcantarilla(altura_ref)
-        bl_nota = f"25% de la altura/diámetro de la estructura ({altura_ref:.3f} m) — Manual MTC 4.1.1.3.6(b)"
-    elif tipo_obra == "Badén":
-        bl = st.slider(
-            "Borde libre del badén (m) — Manual MTC recomienda 0.30 a 0.50 m", ca.BORDE_LIBRE_BADEN_MIN_M,
-            ca.BORDE_LIBRE_BADEN_MAX_M, ca.BORDE_LIBRE_BADEN_DEFAULT_M, 0.01,
-        )
-        bl_nota = "Manual MTC 4.1.1.4.1(e): borde libre del badén, valor entre 0.30 y 0.50 m"
-    else:
-        bl = 0.25 * yn
-        bl_nota = "Criterio general (25% del tirante normal), ajústalo según el proyecto"
-
-    r5, r6, r7 = st.columns(3)
-    r5.metric("Borde libre (m)", f"{bl:.3f}")
-    r6.metric("Tirante total y + BL (m)", f"{yn + bl:.3f}")
-    if seccion == "Circular":
-        r7.metric("% de la sección llena", f"{100 * yn / kw['d']:.1f} %")
-    st.caption(f"Borde libre: {bl_nota}")
-
-    if v < ca.VELOCIDAD_MIN_MS:
-        st.warning(f"⚠️ La velocidad ({v:.2f} m/s) es menor a la mínima recomendada ({ca.VELOCIDAD_MIN_MS} m/s) — riesgo de sedimentación.")
-    st.caption(
-        "Velocidad máxima admisible según material del cauce/revestimiento (referencial): "
-        + ", ".join(f"{k}: {v_:.2f} m/s" for k, v_ in ca.VELOCIDAD_MAX_MS.items())
+def _input_geometria(prefix: str, seccion_default: str = "Trapezoidal"):
+    """Selector de forma + dimensiones de la sección (sin n ni S) — reusado
+    por los módulos que no dependen de la pendiente/rugosidad del cauce."""
+    seccion = st.selectbox(
+        "Forma de la sección", list(ca.SECCIONES.keys()),
+        index=list(ca.SECCIONES.keys()).index(seccion_default), key=f"{prefix}_seccion",
     )
+    kw = {}
+    if seccion == "Circular":
+        d = st.number_input("Diámetro (D)", min_value=0.10, value=1.00, step=0.05, format="%.2f", key=f"{prefix}_d")
+        st.caption("m")
+        kw["d"] = d
+    else:
+        b = st.number_input(
+            "Ancho de solera (b)", min_value=0.0, value=0.60 if seccion != "Rectangular" else 1.00,
+            step=0.05, format="%.2f", key=f"{prefix}_b",
+        )
+        st.caption("m")
+        kw["b"] = b
+    if seccion in ("Trapezoidal", "Triangular"):
+        z = st.number_input(
+            "Talud (Z)", min_value=0.0, value=1.0, step=0.1, format="%.2f",
+            help="Horizontal por cada 1 vertical", key=f"{prefix}_z",
+        )
+        kw["z"] = z
+    return seccion, kw
 
-    # --- Gráfico de la sección transversal a escala, con el tirante calculado ---
-    y_dibujo = yn + bl
+
+def _fig_seccion_con_agua(seccion: str, kw: dict, tirantes: list, altura_ref: float = None):
+    """Dibuja el contorno de la sección y, superpuestos, los tirantes dados
+    como (etiqueta, y, color, opacidad). `altura_ref` fija la escala del
+    contorno (por defecto, el mayor tirante a dibujar)."""
+    y_max_dibujo = altura_ref or max(y for _, y, _, _ in tirantes) * 1.15
     fig = go.Figure()
     if seccion == "Circular":
         d = kw["d"]
         th = np.linspace(0, 2 * np.pi, 200)
         fig.add_trace(go.Scatter(x=d / 2 * np.cos(th), y=d / 2 * np.sin(th) + d / 2, mode="lines",
                                   line=dict(color="#8a6d1f", width=3), name="Tubería"))
-        # Arco inferior de la tubería cubierto por el agua hasta el tirante yn
-        # (y=0 en el fondo del tubo, y=d en la corona; centro del círculo en y=d/2).
-        # ang_full ya está ordenado de -pi a pi, y la máscara conserva ese orden,
-        # así que el arco resultante queda contiguo sin necesidad de reordenar.
         ang_full = np.linspace(-np.pi, np.pi, 400)
         y_circ = d / 2 * np.sin(ang_full) + d / 2
-        mascara = y_circ <= yn
-        xw = (d / 2 * np.cos(ang_full))[mascara]
-        yw = y_circ[mascara]
-        fig.add_trace(go.Scatter(x=np.concatenate([xw, [xw[0]]]), y=np.concatenate([yw, [yw[0]]]), fill="toself",
-                                  fillcolor="rgba(59,130,246,0.35)", line=dict(color="#3b82f6"), name="Agua (yn)"))
+        for etiqueta, y, color, opacidad in tirantes:
+            mascara = y_circ <= y
+            if not mascara.any():
+                continue
+            xw = (d / 2 * np.cos(ang_full))[mascara]
+            yw = y_circ[mascara]
+            fig.add_trace(go.Scatter(x=np.concatenate([xw, [xw[0]]]), y=np.concatenate([yw, [yw[0]]]), fill="toself",
+                                      fillcolor=color, opacity=opacidad, line=dict(color=color), name=etiqueta))
         fig.update_yaxes(scaleanchor="x", range=[-0.1 * d, d * 1.1])
     else:
         b_ = kw.get("b", 0.0)
         z_ = kw.get("z", 0.0)
-        half_top = b_ / 2 + z_ * y_dibujo
-        half_bot = b_ / 2
-        xs = [-half_top, -half_bot, half_bot, half_top]
-        ys = [y_dibujo, 0, 0, y_dibujo]
+        half_top = b_ / 2 + z_ * y_max_dibujo
+        xs = [-half_top, -b_ / 2, b_ / 2, half_top]
+        ys = [y_max_dibujo, 0, 0, y_max_dibujo]
         fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color="#8a6d1f", width=3), name="Sección"))
-        half_top_w = b_ / 2 + z_ * yn
-        xw = [-half_top_w, -half_bot, half_bot, half_top_w]
-        yw = [yn, 0, 0, yn]
-        fig.add_trace(go.Scatter(x=xw, y=yw, fill="toself", fillcolor="rgba(59,130,246,0.35)",
-                                  line=dict(color="#3b82f6"), name="Agua (yn)"))
-        fig.add_hline(y=yn, line_dash="dot", line_color="#3b82f6", annotation_text=f"yn={yn:.2f}m")
-        fig.add_hline(y=y_dibujo, line_dash="dot", line_color="#f2c96b", annotation_text=f"yn+BL={y_dibujo:.2f}m")
+        for etiqueta, y, color, opacidad in tirantes:
+            half_top_w = b_ / 2 + z_ * y
+            xw = [-half_top_w, -b_ / 2, b_ / 2, half_top_w]
+            yw = [y, 0, 0, y]
+            fig.add_trace(go.Scatter(x=xw, y=yw, fill="toself", fillcolor=color, opacity=opacidad,
+                                      line=dict(color=color), name=etiqueta))
+            fig.add_hline(y=y, line_dash="dot", line_color=color, annotation_text=f"{etiqueta}={y:.2f}m")
         fig.update_yaxes(scaleanchor="x")
+    fig.update_layout(xaxis_title="(m)", yaxis_title="(m)", height=380, showlegend=True)
+    return fig
 
-    fig.update_layout(title=f"Sección {seccion.lower()} — {tipo_obra}", xaxis_title="(m)", yaxis_title="(m)",
-                       height=420, showlegend=True)
-    st.plotly_chart(fig, use_container_width=True)
 
-except ValueError as e:
-    st.error(f"No se pudo resolver el tirante normal: {e}")
+def _modulo_tirante_normal(q_diseno, obra_sel, nombre_sel, resumen, origen_manual):
+    st.subheader("2. Datos")
+
+    tipo_obra_opciones = ["Alcantarilla", "Badén", "Canal / cuneta"]
+    idx_default = 0
+    if obra_sel:
+        for i, op in enumerate(tipo_obra_opciones):
+            if op.lower().split()[0] in obra_sel.lower():
+                idx_default = i
+
+    col_datos, col_dibujo = st.columns([1, 1])
+
+    with col_datos:
+        with st.container(border=True):
+            tipo_obra = st.radio("Tipo de obra de drenaje", tipo_obra_opciones, index=idx_default, horizontal=True)
+            seccion_default = {"Alcantarilla": "Circular", "Badén": "Trapezoidal", "Canal / cuneta": "Trapezoidal"}[tipo_obra]
+            seccion = st.selectbox(
+                "Forma de la sección", list(ca.SECCIONES.keys()),
+                index=list(ca.SECCIONES.keys()).index(seccion_default),
+            )
+
+            st.metric("Caudal (Q)", f"{q_diseno:.3f} m³/s")
+
+            kw = {}
+            if seccion == "Circular":
+                d = st.number_input("Diámetro (D)", min_value=0.10, value=1.00, step=0.05, format="%.2f")
+                st.caption("m")
+                kw["d"] = d
+            else:
+                b = st.number_input("Ancho de solera (b)", min_value=0.0, value=0.60 if seccion != "Rectangular" else 1.00, step=0.05, format="%.2f")
+                st.caption("m")
+                kw["b"] = b
+
+            if seccion in ("Trapezoidal", "Triangular"):
+                z = st.number_input("Talud (Z)", min_value=0.0, value=1.0, step=0.1, format="%.2f", help="Horizontal por cada 1 vertical")
+                kw["z"] = z
+
+            nombres_n = list(ca.MANNING_N.keys())
+            material = st.selectbox("Material / revestimiento", nombres_n)
+            manual_n = st.checkbox("Ingresar rugosidad (n) manualmente")
+            n_manning = (
+                st.number_input("Rugosidad (n)", min_value=0.008, max_value=0.15, value=ca.MANNING_N[material], step=0.001, format="%.3f")
+                if manual_n else ca.MANNING_N[material]
+            )
+            if not manual_n:
+                st.caption(f"n = {n_manning:.3f} ({material}) — Tabla Nº 09, Manual MTC")
+
+            pendiente_default = 0.02
+            if resumen is not None and not origen_manual:
+                cuencas_df = st.session_state.get("cuencas")
+                if cuencas_df is not None and nombre_sel in list(cuencas_df["Nombre"]):
+                    pendiente_default = float(cuencas_df[cuencas_df["Nombre"] == nombre_sel]["Pendiente S (m/m)"].iloc[0])
+            s_fondo = st.number_input(
+                "Pendiente (S)", min_value=0.0001, value=round(pendiente_default, 4),
+                step=0.001, format="%.4f",
+                help="Por defecto se toma la pendiente del cauce de la cuenca seleccionada; ajústala si la obra tiene una pendiente longitudinal propia.",
+            )
+            st.caption("m/m")
+
+    with col_dibujo:
+        with st.container(border=True):
+            fig_esquema = go.Figure()
+            if seccion == "Circular":
+                th = np.linspace(0, 2 * np.pi, 100)
+                fig_esquema.add_trace(go.Scatter(x=0.5 * np.cos(th), y=0.5 * np.sin(th) + 0.5, mode="lines",
+                                                  line=dict(color="#1a1a1a", width=3), fill="toself",
+                                                  fillcolor="#bcd6f2", showlegend=False))
+                fig_esquema.add_annotation(x=0.6, y=0.5, text="D", showarrow=True, ax=40, ay=0, font=dict(size=16))
+            else:
+                z_ill = kw.get("z", 1.0) if seccion in ("Trapezoidal", "Triangular") else 0.0
+                b_ill, y_ill = 0.6, 0.6
+                half_top = b_ill / 2 + z_ill * y_ill
+                half_bot = b_ill / 2 if seccion != "Triangular" else 0.0
+                xs = [-half_top, -half_bot, half_bot, half_top]
+                ys = [y_ill, 0, 0, y_ill]
+                fig_esquema.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color="#1a1a1a", width=3),
+                                                  fill="toself", fillcolor="#bcd6f2", showlegend=False))
+                fig_esquema.add_annotation(x=0, y=y_ill * 1.18, text=f"T", showarrow=False, font=dict(size=16, color="#0b3d91"))
+                fig_esquema.add_annotation(x=half_top + 0.18, y=y_ill / 2, text="y", showarrow=False, font=dict(size=16, color="#0b3d91"))
+                if seccion != "Rectangular":
+                    fig_esquema.add_annotation(x=-half_bot / 2 - half_top / 4, y=y_ill / 2, text="Z", showarrow=False, font=dict(size=14, color="#0b3d91"))
+                    fig_esquema.add_annotation(x=-(half_bot + half_top) / 4, y=y_ill / 2 + 0.14, text="1", showarrow=False, font=dict(size=12, color="#0b3d91"))
+                if half_bot > 0:
+                    fig_esquema.add_annotation(x=0, y=-0.08, text="b", showarrow=False, font=dict(size=16, color="#0b3d91"))
+            fig_esquema.update_xaxes(visible=False)
+            fig_esquema.update_yaxes(visible=False, scaleanchor="x")
+            fig_esquema.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), plot_bgcolor="#eaf2fb", paper_bgcolor="#eaf2fb")
+            st.plotly_chart(fig_esquema, use_container_width=True)
+            st.caption(f"Esquema ilustrativo — sección {seccion.lower()}")
+
+    st.divider()
+    st.subheader("3. Resultados")
+
+    try:
+        yn = ca.tirante_normal(q_diseno, n_manning, s_fondo, seccion, **kw)
+        yc = ca.tirante_critico(q_diseno, seccion, **kw)
+        v = ca.velocidad(q_diseno, yn, seccion, **kw)
+        fr = ca.numero_froude(q_diseno, yn, seccion, **kw)
+        prop = ca.propiedades_seccion(yn, seccion, **kw)
+        e_esp = ca.energia_especifica(q_diseno, yn, seccion, **kw)
+        regimen = "Supercrítico" if fr > 1.0 else ("Crítico" if abs(fr - 1.0) < 1e-3 else "Subcrítico")
+
+        with st.container(border=True):
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                st.metric("Tirante normal (y)", f"{yn:.4f} m")
+                st.metric("Área hidráulica (A)", f"{prop['area']:.4f} m²")
+                st.metric("Espejo de agua (T)", f"{prop['espejo']:.4f} m")
+                st.metric("Número de Froude (F)", f"{fr:.4f}")
+                st.metric("Tipo de flujo", regimen)
+            with rc2:
+                st.metric("Perímetro (P)", f"{prop['perimetro']:.4f} m")
+                st.metric("Radio hidráulico (R)", f"{prop['radio_hidraulico']:.4f} m")
+                st.metric("Velocidad (v)", f"{v:.4f} m/s")
+                st.metric("Energía específica (E)", f"{e_esp:.4f} m")
+                st.metric("Tirante crítico (yc)", f"{yc:.4f} m")
+
+        st.divider()
+        st.subheader("4. Borde libre y verificación (criterios Manual MTC)")
+
+        if tipo_obra == "Alcantarilla":
+            altura_ref = kw.get("d", kw.get("b", yn))
+            bl = ca.borde_libre_alcantarilla(altura_ref)
+            bl_nota = f"25% de la altura/diámetro de la estructura ({altura_ref:.3f} m) — Manual MTC 4.1.1.3.6(b)"
+        elif tipo_obra == "Badén":
+            bl = st.slider(
+                "Borde libre del badén (m) — Manual MTC recomienda 0.30 a 0.50 m", ca.BORDE_LIBRE_BADEN_MIN_M,
+                ca.BORDE_LIBRE_BADEN_MAX_M, ca.BORDE_LIBRE_BADEN_DEFAULT_M, 0.01,
+            )
+            bl_nota = "Manual MTC 4.1.1.4.1(e): borde libre del badén, valor entre 0.30 y 0.50 m"
+        else:
+            bl = 0.25 * yn
+            bl_nota = "Criterio general (25% del tirante normal), ajústalo según el proyecto"
+
+        r5, r6, r7 = st.columns(3)
+        r5.metric("Borde libre (m)", f"{bl:.3f}")
+        r6.metric("Tirante total y + BL (m)", f"{yn + bl:.3f}")
+        if seccion == "Circular":
+            r7.metric("% de la sección llena", f"{100 * yn / kw['d']:.1f} %")
+        st.caption(f"Borde libre: {bl_nota}")
+
+        if v < ca.VELOCIDAD_MIN_MS:
+            st.warning(f"⚠️ La velocidad ({v:.2f} m/s) es menor a la mínima recomendada ({ca.VELOCIDAD_MIN_MS} m/s) — riesgo de sedimentación.")
+        st.caption(
+            "Velocidad máxima admisible según material del cauce/revestimiento (referencial): "
+            + ", ".join(f"{k}: {v_:.2f} m/s" for k, v_ in ca.VELOCIDAD_MAX_MS.items())
+        )
+
+        y_dibujo = yn + bl
+        fig = _fig_seccion_con_agua(seccion, kw, [("yn", yn, "#3b82f6", 0.35)], altura_ref=y_dibujo)
+        fig.update_layout(title=f"Sección {seccion.lower()} — {tipo_obra}")
+        st.plotly_chart(fig, use_container_width=True)
+
+    except ValueError as e:
+        st.error(f"No se pudo resolver el tirante normal: {e}")
+
+
+def _modulo_tirante_critico(q_diseno):
+    st.subheader("2. Datos")
+    col_datos, col_dibujo = st.columns([1, 1])
+    with col_datos:
+        with st.container(border=True):
+            seccion, kw = _input_geometria("yc")
+            st.metric("Caudal (Q)", f"{q_diseno:.3f} m³/s")
+            st.caption(
+                "El tirante crítico depende solo de Q y la geometría (no de la rugosidad n "
+                "ni de la pendiente S): es el tirante para el cual la energía específica es mínima."
+            )
+
+    st.divider()
+    st.subheader("3. Resultados")
+    try:
+        yc = ca.tirante_critico(q_diseno, seccion, **kw)
+        vc = ca.velocidad(q_diseno, yc, seccion, **kw)
+        fr = ca.numero_froude(q_diseno, yc, seccion, **kw)
+        prop = ca.propiedades_seccion(yc, seccion, **kw)
+        ec = ca.energia_especifica(q_diseno, yc, seccion, **kw)
+
+        with st.container(border=True):
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                st.metric("Tirante crítico (yc)", f"{yc:.4f} m")
+                st.metric("Área hidráulica crítica (Ac)", f"{prop['area']:.4f} m²")
+                st.metric("Espejo de agua crítico (Tc)", f"{prop['espejo']:.4f} m")
+                st.metric("Número de Froude", f"{fr:.4f} (= 1 por definición)")
+            with rc2:
+                st.metric("Perímetro (Pc)", f"{prop['perimetro']:.4f} m")
+                st.metric("Radio hidráulico (Rc)", f"{prop['radio_hidraulico']:.4f} m")
+                st.metric("Velocidad crítica (vc)", f"{vc:.4f} m/s")
+                st.metric("Energía específica mínima (Ec)", f"{ec:.4f} m")
+
+        with col_dibujo:
+            with st.container(border=True):
+                fig = _fig_seccion_con_agua(seccion, kw, [("yc", yc, "#ef4444", 0.35)])
+                fig.update_layout(title=f"Sección {seccion.lower()} — tirante crítico")
+                st.plotly_chart(fig, use_container_width=True)
+
+    except ValueError as e:
+        st.error(f"No se pudo resolver el tirante crítico: {e}")
+
+
+def _modulo_resalto(q_diseno):
+    st.subheader("2. Datos")
+    col_datos, col_dibujo = st.columns([1, 1])
+    with col_datos:
+        with st.container(border=True):
+            seccion, kw = _input_geometria("rh", "Rectangular")
+            st.metric("Caudal (Q)", f"{q_diseno:.3f} m³/s")
+            y1 = st.number_input(
+                "Tirante antes del resalto y1 (m) — flujo supercrítico", min_value=0.001,
+                value=0.30, step=0.01, format="%.3f",
+                help="Tirante de llegada al pie de una estructura (rápida, vertedero, salida de "
+                "alcantarilla con pendiente fuerte, etc.), donde el flujo es supercrítico.",
+            )
+
+    st.divider()
+    st.subheader("3. Resultados")
+    try:
+        yc = ca.tirante_critico(q_diseno, seccion, **kw)
+        if y1 >= yc:
+            st.warning(
+                f"⚠️ y1 ({y1:.3f} m) no es menor que el tirante crítico yc ({yc:.3f} m): el flujo "
+                "no es supercrítico y no se forma un resalto hidráulico real. Ingresa un y1 menor a yc."
+            )
+        y2 = ca.tirante_conjugado(q_diseno, y1, seccion, **kw)
+        fr1 = ca.numero_froude(q_diseno, y1, seccion, **kw)
+        fr2 = ca.numero_froude(q_diseno, y2, seccion, **kw)
+        v1 = ca.velocidad(q_diseno, y1, seccion, **kw)
+        v2 = ca.velocidad(q_diseno, y2, seccion, **kw)
+        e1 = ca.energia_especifica(q_diseno, y1, seccion, **kw)
+        e2 = ca.energia_especifica(q_diseno, y2, seccion, **kw)
+        delta_e = e1 - e2
+
+        with st.container(border=True):
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                st.metric("Tirante antes (y1)", f"{y1:.4f} m")
+                st.metric("Número de Froude (F1)", f"{fr1:.4f}")
+                st.metric("Velocidad (v1)", f"{v1:.4f} m/s")
+                st.metric("Energía específica (E1)", f"{e1:.4f} m")
+            with rc2:
+                st.metric("Tirante conjugado (y2)", f"{y2:.4f} m")
+                st.metric("Número de Froude (F2)", f"{fr2:.4f}")
+                st.metric("Velocidad (v2)", f"{v2:.4f} m/s")
+                st.metric("Energía específica (E2)", f"{e2:.4f} m")
+            st.metric("Pérdida de energía en el resalto (ΔE = E1 − E2)", f"{delta_e:.4f} m")
+            st.caption(f"Tirante crítico de referencia (yc) = {yc:.4f} m")
+
+        with col_dibujo:
+            with st.container(border=True):
+                fig = _fig_seccion_con_agua(
+                    seccion, kw,
+                    [("y2", y2, "#3b82f6", 0.30), ("y1", y1, "#ef4444", 0.55)],
+                )
+                fig.update_layout(title=f"Sección {seccion.lower()} — y1 (antes) y y2 (después) del resalto")
+                st.plotly_chart(fig, use_container_width=True)
+
+    except ValueError as e:
+        st.error(f"No se pudo resolver el resalto hidráulico: {e}")
+
+
+if modulo == "Tirante-Normal":
+    _modulo_tirante_normal(q_diseno, obra_sel, nombre_sel, resumen, origen_manual)
+elif modulo == "Tirante-Crítico":
+    _modulo_tirante_critico(q_diseno)
+elif modulo == "Resalto-Hidráulico":
+    _modulo_resalto(q_diseno)
+else:
+    st.info(
+        f"🚧 El módulo **{modulo}** (como en H Canales) todavía no está implementado en esta "
+        "interfaz — no forma parte del alcance típico del diseño hidráulico vial del Manual MTC "
+        "(alcantarillas, badenes y cunetas), que solo requiere Tirante Normal, Tirante Crítico y, "
+        "en obras con flujo rápido, Resalto Hidráulico."
+    )
 
 st.sidebar.divider()
 st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")

@@ -4,6 +4,7 @@ canales y alcantarillas a partir del caudal de diseño.
 """
 
 import numpy as np
+from scipy.integrate import quad
 from scipy.optimize import brentq
 
 G = 9.81  # m/s2
@@ -138,6 +139,42 @@ def energia_especifica(q: float, y: float, seccion: str, **kw) -> float:
     """E = y + V² / (2g)  (energía específica, m)."""
     v = velocidad(q, y, seccion, **kw)
     return y + v ** 2 / (2 * G)
+
+
+# ---------------------------------------------------------------------------
+# Resalto hidráulico — función de momentum (M = Q²/(g·A) + primer momento del
+# área respecto a la superficie libre), válida para cualquier sección al
+# integrar el espejo de agua T(η); para trapezoidal/rectangular equivale a
+# las fórmulas cerradas usuales, y evita tener que derivar una por sección.
+# ---------------------------------------------------------------------------
+
+def _primer_momento(y: float, seccion: str, **kw) -> float:
+    """∫₀^y (y-η)·T(η) dη = A(y)·ȳ(y), con ȳ la profundidad del centroide
+    del área mojada medida desde la superficie libre."""
+    if y <= 0:
+        return 0.0
+    _, _, espejo = _geometria(seccion, **kw)
+    valor, _ = quad(lambda eta: (y - eta) * espejo(eta), 0, y)
+    return valor
+
+
+def funcion_momentum(q: float, y: float, seccion: str, **kw) -> float:
+    area, _, _ = _geometria(seccion, **kw)
+    a = area(y)
+    if a <= 0:
+        return float("inf")
+    return q ** 2 / (G * a) + _primer_momento(y, seccion, **kw)
+
+
+def tirante_conjugado(q: float, y1: float, seccion: str, y_max: float = 50.0, **kw) -> float:
+    """Resuelve el tirante conjugado (secuente) y2 tal que M(y1) = M(y2),
+    condición de igualdad de momentum antes y después del resalto hidráulico."""
+    yc = tirante_critico(q, seccion, y_max=y_max, **kw)
+    m1 = funcion_momentum(q, y1, seccion, **kw)
+    f = lambda y: funcion_momentum(q, y, seccion, **kw) - m1
+    lo = yc if y1 < yc else 1e-6
+    hi = y_max if y1 < yc else yc
+    return brentq(f, lo, hi)
 
 
 # ---------------------------------------------------------------------------
