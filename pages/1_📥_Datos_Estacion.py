@@ -410,6 +410,11 @@ if df_result is not None and len(df_result) > 0:
     )
 
     st.success("Datos listos. Continúa con **📊 Análisis de frecuencias** en el menú lateral.")
+
+    _col_sig1, _col_sig2 = st.columns([3, 1])
+    with _col_sig2:
+        if st.button("Análisis de frecuencias →", type="primary", use_container_width=True):
+            st.switch_page("pages/2_📊_Analisis_Frecuencias.py")
 else:
     st.info("Aún no hay datos cargados.")
 
