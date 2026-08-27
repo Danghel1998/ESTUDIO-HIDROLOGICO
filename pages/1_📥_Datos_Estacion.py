@@ -102,15 +102,21 @@ with st.expander(
                 st.rerun()
 
         with st.expander("Ver tabla de estaciones filtradas"):
-            st.dataframe(
+            tabla_estaciones = (
                 df_map[["nombre", "codigo", "codigo_antiguo", "tipo", "categoria_desc", "estado_desc", "lat", "lon"]]
                 .rename(columns={
                     "nombre": "Nombre", "codigo": "Código", "codigo_antiguo": "Código antiguo",
                     "tipo": "Tipo", "categoria_desc": "Categoría", "estado_desc": "Condición",
                     "lat": "Latitud", "lon": "Longitud",
                 })
-                .sort_values("Nombre"),
-                use_container_width=True, hide_index=True, height=280,
+                .sort_values("Nombre")
+            )
+            st.dataframe(tabla_estaciones, use_container_width=True, hide_index=True, height=280)
+            st.download_button(
+                "⬇️ Descargar esta lista de estaciones (CSV)",
+                tabla_estaciones.to_csv(index=False).encode("utf-8-sig"),
+                file_name="estaciones_senamhi.csv",
+                mime="text/csv",
             )
 
 col_meta1, col_meta2 = st.columns(2)
