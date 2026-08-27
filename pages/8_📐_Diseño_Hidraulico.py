@@ -513,8 +513,15 @@ def _modulo_caudales():
     col_datos, col_dibujo = st.columns([1, 1])
     with col_datos:
         with st.container(border=True):
-            seccion, kw = _input_geometria("cq", "Trapezoidal", incluir_circular=False)
-            y = st.number_input("Tirante (y)", min_value=0.001, value=0.50, step=0.01, format="%.3f", key="cq_y")
+            seccion, kw = _input_geometria("cq", "Trapezoidal", incluir_circular=True)
+            if seccion == "Circular":
+                y_tope = kw["d"] - 0.001
+                y = st.number_input(
+                    "Tirante (y)", min_value=0.001, max_value=y_tope, value=min(0.50, y_tope),
+                    step=0.01, format="%.3f", key="cq_y", help="Debe ser menor que el diámetro D.",
+                )
+            else:
+                y = st.number_input("Tirante (y)", min_value=0.001, value=0.50, step=0.01, format="%.3f", key="cq_y")
             st.caption("m")
 
             nombres_n = list(ca.MANNING_N.keys())
