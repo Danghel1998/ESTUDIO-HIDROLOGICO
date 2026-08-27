@@ -336,5 +336,13 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.success("Listo. Continúa con **⏱️ Período de retorno** o **🌧️ Curvas IDF e Hietograma**.")
 
+_col_sig1, _col_sig2, _col_sig3 = st.columns([2, 1, 1])
+with _col_sig2:
+    if st.button("⏱️ Período de retorno →", use_container_width=True):
+        st.switch_page("pages/3_⏱️_Periodo_Retorno.py")
+with _col_sig3:
+    if st.button("🌧️ Curvas IDF e Hietograma →", type="primary", use_container_width=True):
+        st.switch_page("pages/4_🌧️_IDF_Hietograma.py")
+
 st.sidebar.divider()
 st.sidebar.caption("HIDROPro v1.0 · Creado por el Ing. Daniel Oliden")
